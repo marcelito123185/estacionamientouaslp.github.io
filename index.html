@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estacionamiento UASLP</title>
+
+<!-- ESTILOS (CSS) -->
+<style>
+  :root {
+    --fondo: #f4f3ee;      /* fondo de la página */
+    --tarjeta: #ffffff;    /* fondo de cada caja */
+    --texto: #2b3340;      /* color del texto */
+    --suave: #6b7280;      /* texto secundario */
+    --borde: #d6d9de;      /* líneas y bordes */
+    --boton: #1d4f91;      /* azul (botones y encabezado) */
+    --dorado: #c9a227;     /* dorado (franja del encabezado) */
+    --libre: #3f8f5f;      --libre-fondo: #e1f1e6;      /* verde */
+    --ocupado: #c4533b;    --ocupado-fondo: #fae3de;    /* rojo ladrillo */
+    --mantto: #b98a1f;     --mantto-fondo: #faf0d2;     /* mostaza */
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* hace que el atributo "hidden" siempre oculte */
+
+  body { margin: 0; font-family: Arial, sans-serif; background: var(--fondo); color: var(--texto); }
+  .contenedor { max-width: 1000px; margin: 0 auto; padding: 12px 16px; }
+  header { background: var(--boton); color: #fff; border-bottom: 4px solid var(--dorado); margin-bottom: 8px; }
+  header .suave { color: #d8e3f3; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  p  { margin: 4px 0; }
+
+  .caja { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 6px; padding: 14px; margin-bottom: 14px; }
+  .fila { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+  .rejilla { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .suave { color: var(--suave); font-size: 13px; }
+
+  button, input, select { font: inherit; padding: 7px 10px; border: 1px solid var(--borde); border-radius: 4px; background: #fff; color: var(--texto); }
+  button { cursor: pointer; background: var(--boton); color: #fff; border-color: var(--boton); }
+  button.gris { background: #fff; color: var(--texto); border-color: var(--borde); }
+  button.rojo { background: var(--ocupado); border-color: var(--ocupado); }
+  label { display: block; font-size: 13px; margin: 8px 0 3px; }
+  input, select { width: 100%; }
+  input[type="range"] { padding: 0; cursor: pointer; }
+
+  /* Tarjetas de cada piso y pestañas */
+  .piso { cursor: pointer; text-align: left; background: #fff; color: var(--texto); border: 1px solid var(--borde); padding: 10px; }
+  .piso.activo, .pestana.activo { border: 2px solid var(--boton); }
+  .pestana { background: #fff; color: var(--texto); border: 1px solid var(--borde); }
+
+  /* Cajones: cuadritos pequeños, el color depende del estado */
+  .cajones { display: grid; gap: 6px; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); margin-bottom: 14px; }
+  .cajon { padding: 6px; border-radius: 4px; border: 1px solid; min-height: 54px; font-size: 11px; word-break: break-all; }
+  .cajon.libre    { background: var(--libre-fondo);   border-color: var(--libre); }
+  .cajon.ocupado  { background: var(--ocupado-fondo); border-color: var(--ocupado); }
+  .cajon.mantto   { background: var(--mantto-fondo);  border-color: var(--mantto); }
+  .cajon.elegido  { outline: 3px solid var(--boton); }
+  .cajon.clic     { cursor: pointer; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--borde); }
+  .tabla { overflow-x: auto; }
+
+  /* Ventanas emergentes (login, ticket, reinicio) */
+  dialog { border: 1px solid var(--borde); border-radius: 6px; padding: 18px; max-width: 360px; width: 92%; }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+  .ticket { font-family: monospace; font-size: 13px; background: #fafaf5; border: 1px dashed #999; padding: 12px; }
+  .ticket div { display: flex; justify-content: space-between; margin: 3px 0; }
+
+  /* Mensaje temporal (aviso) */
+  #aviso { position: fixed; top: 10px; right: 10px; padding: 10px 14px; border-radius: 4px; color: #fff; background: var(--boton); z-index: 99; }
+
+  /* Al imprimir, solo se ve el ticket */
+  @media print { body > *:not(#ventana-ticket) { display: none; } #ventana-ticket button { display: none; } }
+</style>
+</head>
+
+<body>
+
+<div id="aviso" hidden></div>
+
+<!-- ENCABEZADO -->
+<header>
+  <div class="contenedor fila">
+    <div>
+      <h1>Estacionamiento UASLP</h1>
+      <p class="suave">Zona Universitaria · <span id="rol">Vista pública</span> · <span id="reloj"></span></p>
+    </div>
+    <div>
+      <button id="btn-entrar" class="gris" onclick="abrir('ventana-login')">Acceso guardia</button>
+      <button id="btn-salir" class="gris" onclick="cerrarSesion()" hidden>Salir de caseta</button>
+    </div>
+  </div>
+</header>
+
+<main class="contenedor">
+
+  <!-- RESUMEN  -->
+  <section class="caja">
+    <h2 id="recomendacion">Cargando...</h2>
+    <p class="suave" id="totales"></p>
+  </section>
+
+  <div class="rejilla" id="resumen-pisos" style="margin-bottom:14px"></div>
+
+  <!--  INDICADORES DEL GUARDIA  -->
+  <section class="caja solo-guardia" id="indicadores" hidden></section>
+
+  <!-- MAPA DE CAJONES  -->
+  <section class="caja">
+    <h2>Mapa de cajones</h2>
+    <p class="suave" id="ayuda-mapa"></p>
+    <p class="suave">
+      <span style="color:var(--libre)">■</span> Libre &nbsp;
+      <span style="color:var(--ocupado)">■</span> Ocupado &nbsp;
+      <span style="color:var(--mantto)">■</span> Mantenimiento
+    </p>
+    <div class="fila" id="pestanas" style="justify-content:flex-start; margin:10px 0"></div>
+    <div id="mapa"></div>
+    <p class="suave">Tarifa universitaria: $10 las primeras 3 horas ($5 hora extra o fracción) · Público general: $12 por hora o fracción.</p>
+  </section>
+
+  <!-- PANEL DEL GUARDIA (solo con sesión) -->
+  <div class="solo-guardia" hidden>
+
+    <!-- A. Registrar entrada -->
+    <section class="caja">
+      <h2>Registrar entrada</h2>
+      <form onsubmit="registrarEntrada(event)">
+        <label for="placa">Placa del automóvil</label>
+        <input id="placa" maxlength="12" placeholder="Ej. SLP-452-B" required>
+        <label for="lista-entrada">Cajón libre (del piso que estás viendo en el mapa)</label>
+        <select id="lista-entrada" onchange="cajonEntrada = this.value; dibujarMapa()"></select>
+        <p><button type="submit">Registrar entrada</button></p>
+      </form>
+    </section>
+
+    <!-- B. Cobrar salida -->
+    <section class="caja">
+      <h2>Cobrar salida</h2>
+      <label for="buscar">Buscar por placa</label>
+      <input id="buscar" placeholder="Ej. SLP" oninput="buscarPlaca(this.value)">
+      <label for="lista-cobro">Automóvil estacionado</label>
+      <select id="lista-cobro" onchange="cajonCobro = this.value; document.getElementById('horas-extra').value = 0; dibujar()"></select>
+
+      <div id="detalle-cobro" hidden>
+        <label for="tipo-tarifa">Tipo de tarifa</label>
+        <select id="tipo-tarifa" onchange="mostrarCobro()">
+          <option value="universitario">Tarifa universitaria ($10 primeras 3h, $5 extra)</option>
+          <option value="general">Público general ($12 hora o fracción)</option>
+        </select>
+
+        <!-- Barra sencilla para simular horas extra y probar el cobro -->
+        <label for="horas-extra">Simular horas extra (pruebas): <b>+<span id="txt-horas-extra">0</span> h</b></label>
+        <input type="range" id="horas-extra" min="0" max="12" value="0" oninput="mostrarCobro()">
+
+        <p style="margin-top:10px"><b id="co-titulo"></b></p>
+        <p class="suave">Entrada: <span id="co-entrada"></span> · Tiempo: <span id="co-tiempo"></span></p>
+        <p>Total a cobrar: <b id="co-total"></b> <span class="suave" id="co-horas"></span></p>
+        <button onclick="cobrar()">Cobrar y liberar cajón</button>
+      </div>
+      <p class="suave" id="sin-cobro">Elige un cajón rojo del mapa o busca la placa.</p>
+    </section>
+
+    <!-- C. Mantenimiento -->
+    <section class="caja">
+      <h2>Mantenimiento</h2>
+      <label for="lista-mantto">Cajón (libre o en mantenimiento, del piso que estás viendo)</label>
+      <select id="lista-mantto" onchange="cajonMantto = this.value; dibujarMantto()"></select>
+      <label for="motivo">Motivo (opcional)</label>
+      <input id="motivo" maxlength="35" placeholder="Ej. Pintura">
+      <p><button class="gris" id="btn-mantto" onclick="cambiarMantto()"></button></p>
+    </section>
+
+    <!-- D. Bitácora -->
+    <section class="caja">
+      <div class="fila">
+        <h2>Bitácora de movimientos</h2>
+        <div>
+          <select id="filtro" onchange="dibujarBitacora()" style="width:auto">
+            <option value="TODOS">Todos</option>
+            <option value="ENTRADA">Entradas</option>
+            <option value="SALIDA">Salidas</option>
+            <option value="MANTENIMIENTO">Mantenimiento</option>
+          </select>
+          <button class="gris" onclick="abrir('ventana-reinicio')">Reiniciar datos demo</button>
+        </div>
+      </div>
+      <div class="tabla">
+        <table>
+          <thead><tr><th>Folio</th><th>Evento</th><th>Placa</th><th>Cajón</th><th>Hora</th><th>Detalle</th><th>Cobro</th><th></th></tr></thead>
+          <tbody id="bitacora"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!--  VENTANAS EMERGENTES (etiqueta <dialog>) -->
+<dialog id="ventana-login">
+  <h2>Acceso guardia</h2>
+  <form onsubmit="iniciarSesion(event)">
+    <label for="pin">PIN (demo)</label>
+    <input id="pin" type="password" maxlength="8" required autocomplete="off">
+    <p>
+      <button type="submit">Entrar</button>
+      <button type="button" class="gris" onclick="cerrar('ventana-login')">Cancelar</button>
+    </p>
+  </form>
+</dialog>
+
+<dialog id="ventana-ticket">
+  <h2>Comprobante</h2>
+  <div class="ticket" id="ticket"></div>
+  <p>
+    <button onclick="copiarTicket()">Copiar</button>
+    <button onclick="window.print()">Imprimir</button>
+    <button class="gris" onclick="cerrar('ventana-ticket')">Cerrar</button>
+  </p>
+</dialog>
+
+<dialog id="ventana-reinicio">
+  <h2>¿Reiniciar datos?</h2>
+  <p>Se borrará todo y volverán los datos de ejemplo.</p>
+  <p>
+    <button class="rojo" onclick="reiniciar()">Sí, reiniciar</button>
+    <button class="gris" onclick="cerrar('ventana-reinicio')">Cancelar</button>
+  </p>
+</dialog>
+
+
+<!-- PARTE 8: PROGRAMA (JavaScript) -->
+<script>
+
+/* ---------- 1. DATOS FIJOS DEL SISTEMA ---------- */
+
+const LLAVE = 'uaslp_estacionamiento';          // nombre donde se guardan los datos en el navegador
+const LLAVE_SESION = 'uaslp_estacionamiento_guardia';
+const PIN = '1234';
+
+// Precios del estacionamiento (en pesos)
+const UNIV_BASE = 10;       // primeras 3 horas para universitarios
+const UNIV_EXTRA = 5;       // cada hora extra o fracción para universitarios
+const GENERAL_HORA = 12;    // cada hora o fracción para público general
+
+// Pisos y secciones, copiados del letrero del estacionamiento.
+// Cada sección va del cajón "desde" al cajón "hasta".
+// Todos los cajones (R, M y S) son para automóvil.
+const PISOS = [
+  { id: 'S',  nombre: 'Sótano', secciones: [
+      { nombre: 'S',   desde: 1,   hasta: 12 } ] },
+  { id: 'P1', nombre: 'Piso 1', secciones: [
+      { nombre: 'R1',  desde: 13,  hasta: 46 },  { nombre: 'M1', desde: 47,  hasta: 58 },  { nombre: 'R2',  desde: 59,  hasta: 103 } ] },
+  { id: 'P2', nombre: 'Piso 2', secciones: [
+      { nombre: 'R3',  desde: 104, hasta: 144 }, { nombre: 'M2', desde: 145, hasta: 156 }, { nombre: 'R4',  desde: 157, hasta: 201 } ] },
+  { id: 'P3', nombre: 'Piso 3', secciones: [
+      { nombre: 'R5',  desde: 202, hasta: 242 }, { nombre: 'M3', desde: 243, hasta: 254 }, { nombre: 'R6',  desde: 255, hasta: 299 } ] },
+  { id: 'P4', nombre: 'Piso 4', secciones: [
+      { nombre: 'R7',  desde: 300, hasta: 340 }, { nombre: 'M4', desde: 341, hasta: 352 }, { nombre: 'R8',  desde: 353, hasta: 397 } ] },
+  { id: 'P5', nombre: 'Piso 5', secciones: [
+      { nombre: 'R9',  desde: 398, hasta: 438 }, { nombre: 'M5', desde: 439, hasta: 450 }, { nombre: 'R10', desde: 451, hasta: 495 } ] },
+  { id: 'P6', nombre: 'Piso 6', secciones: [
+      { nombre: 'R11', desde: 496, hasta: 536 }, { nombre: 'M6', desde: 537, hasta: 548 } ] }
+];
+
+/* ---------- 2. VARIABLES QUE CAMBIAN MIENTRAS SE USA ---------- */
+
+let estado;               // todos los datos: cajones, bitácora, contadores
+let pisoActivo = 'P1';    // piso que se ve en el mapa
+let esGuardia = false;    // ¿hay un guardia con sesión?
+let cajonEntrada = null;  // cajón elegido para una entrada
+let cajonCobro = null;    // cajón elegido para cobrar
+let cajonMantto = null;   // cajón elegido para mantenimiento
+
+/* ---------- 3. CREAR, GUARDAR Y CARGAR LOS DATOS ---------- */
+
+// Crea los 548 cajones recorriendo cada piso y cada sección del letrero.
+function crearCajones() {
+  const lista = [];
+  PISOS.forEach(piso => {
+    piso.secciones.forEach(seccion => {
+      for (let n = seccion.desde; n <= seccion.hasta; n++) {
+        lista.push({ id: String(n), piso: piso.id, seccion: seccion.nombre,
+                     estado: 'libre',   // 'libre', 'ocupado' o 'mantto'
+                     vehiculo: null,                      // { placa, entrada }
+                     motivo: '' });
+      }
+    });
+  });
+  return lista;
+}
+
+// Datos de ejemplo para probar el sistema
+function crearEstadoInicial() {
+  const cajones = crearCajones();
+  const ahora = Date.now();
+  const min = 60 * 1000;
+
+  // [cajón, placa, minutos que lleva estacionado]
+  const ejemplos = [
+    ['3', 'VBC-318-A', 110],  ['9', 'SLP-902-D', 45],   ['15', 'UZW-541-B', 135], ['30', 'MTR-774-C', 30],
+    ['70', 'GTO-119-E', 190], ['110', 'NLX-620-A', 50], ['170', 'CDX-833-F', 25], ['215', 'SLP-615-K', 80],
+    ['260', 'TRY-204-B', 160],['310', 'LMN-377-S', 65], ['365', 'HJK-908-P', 95],  ['420', 'SLP-111-Z', 40],
+    ['470', 'QWE-562-R', 120],['500', 'ASD-740-M', 55]
+  ];
+  const bitacora = [];
+  let folio = 2001;
+
+  ejemplos.forEach(e => {
+    const cajon = cajones.find(c => c.id === e[0]);
+    cajon.estado = 'ocupado';
+    cajon.vehiculo = { placa: e[1], entrada: ahora - e[2] * min };
+    bitacora.push({ folio: 'F-' + (folio++), accion: 'ENTRADA', placa: e[1], cajon: e[0],
+                    entrada: cajon.vehiculo.entrada, hora: cajon.vehiculo.entrada,
+                    duracion: 'En estancia', horasCobradas: 0, monto: 0, detalle: 'Automóvil' });
+  });
+
+  // Dos cajones en mantenimiento
+  [['40', 'Pintura'], ['220', 'Luminaria fundida']].forEach(m => {
+    const cajon = cajones.find(c => c.id === m[0]);
+    cajon.estado = 'mantto';
+    cajon.motivo = m[1];
+  });
+
+  // Una salida ya cobrada de ejemplo (2 horas con tarifa universitaria = $10)
+  bitacora.push({ folio: 'F-' + (folio++), accion: 'SALIDA', placa: 'SLP-401-A', cajon: '17',
+                  entrada: ahora - 240 * min, hora: ahora - 120 * min, duracion: '2h 0m',
+                  horasCobradas: 2, monto: UNIV_BASE, detalle: 'Tarifa universitaria' });
+  bitacora.sort((a, b) => b.hora - a.hora);
+
+  return { cajones: cajones, bitacora: bitacora, atendidos: 15, ingresos: UNIV_BASE, folio: folio };
+}
+
+// Algunos navegadores bloquean el almacenamiento (modo privado, vista previa, etc.).
+// Si pasa, los datos se mantienen en memoria mientras la página esté abierta.
+const memoria = {};
+
+function leer(almacen, llave) {
+  try { return window[almacen].getItem(llave); }
+  catch (error) { return memoria[almacen + llave] || null; }
+}
+
+function escribir(almacen, llave, valor) {   // valor = null borra el dato
+  memoria[almacen + llave] = valor;
+  try {
+    if (valor === null) window[almacen].removeItem(llave);
+    else window[almacen].setItem(llave, valor);
+  } catch (error) { /* se queda solo en memoria */ }
+}
+
+function cargar() {
+  const texto = leer('localStorage', LLAVE);
+  estado = texto ? JSON.parse(texto) : crearEstadoInicial();
+
+  // Arreglo para datos guardados por una versión anterior, donde los cajones M
+  // tenían el estado 'moto'. Ahora todos son para auto, así que pasan a 'libre'.
+  estado.cajones.forEach(c => { if (c.estado === 'moto') c.estado = 'libre'; });
+
+  if (!texto) guardar();
+}
+
+function guardar() {
+  escribir('localStorage', LLAVE, JSON.stringify(estado));
+}
+
+// Si otra pestaña cambia los datos, esta pestaña se actualiza sola.
+// Así quien consulta ve los cambios del guardia en tiempo real.
+window.addEventListener('storage', e => {
+  if (e.key === LLAVE) { cargar(); dibujar(); }
+});
+
+/* ---------- 4. SESIÓN DEL GUARDIA ---------- */
+
+function iniciarSesion(e) {
+  e.preventDefault();
+  if (document.getElementById('pin').value === PIN) {
+    esGuardia = true;
+    escribir('sessionStorage', LLAVE_SESION, 'si');
+    cerrar('ventana-login');
+    aplicarRol();
+    dibujar();
+    aviso('Sesión iniciada.');
+  } else {
+    aviso('PIN incorrecto.', 'error');
+  }
+}
+
+function cerrarSesion() {
+  esGuardia = false;
+  escribir('sessionStorage', LLAVE_SESION, null);
+  aplicarRol();
+  dibujar();
+}
+
+// Muestra u oculta todo lo que es solo para el guardia
+function aplicarRol() {
+  document.querySelectorAll('.solo-guardia').forEach(el => el.hidden = !esGuardia);
+  document.getElementById('btn-entrar').hidden = esGuardia;
+  document.getElementById('btn-salir').hidden = !esGuardia;
+  document.getElementById('rol').textContent = esGuardia ? 'Caseta del guardia' : 'Vista pública';
+  document.getElementById('ayuda-mapa').textContent = esGuardia
+    ? 'Clic en verde para registrar entrada, en rojo para cobrar, en mostaza para mantenimiento.'
+    : 'Consulta qué lugares están libres en cada piso antes de venir.';
+}
+
+/* ---------- 5. DIBUJAR LA PANTALLA ---------- */
+
+// Esta función vuelve a dibujar todo. Se llama después de cualquier cambio.
+function dibujar() {
+  dibujarResumen();
+  dibujarPestanas();
+  dibujarMapa();
+  if (esGuardia) {
+    dibujarIndicadores();
+    llenarListas();
+    mostrarCobro();
+    dibujarMantto();
+    dibujarBitacora();
+  }
+}
+
+// Cuenta los cajones de un piso con un estado
+function contar(pisoId, estadoBuscado) {
+  return estado.cajones.filter(c => c.piso === pisoId && c.estado === estadoBuscado).length;
+}
+
+// Total de cajones de un piso
+function totalCajones(pisoId) {
+  return estado.cajones.filter(c => c.piso === pisoId).length;
+}
+
+function dibujarResumen() {
+  const contenedor = document.getElementById('resumen-pisos');
+  contenedor.innerHTML = '';
+  let libres = 0, ocupados = 0, mantto = 0;
+  let mejor = null, maxLibres = 0;
+
+  PISOS.forEach(piso => {
+    const l = contar(piso.id, 'libre');
+    libres += l;
+    ocupados += contar(piso.id, 'ocupado');
+    mantto += contar(piso.id, 'mantto');
+    if (l > maxLibres) { maxLibres = l; mejor = piso; }
+
+    const tarjeta = document.createElement('button');
+    tarjeta.className = 'piso' + (piso.id === pisoActivo ? ' activo' : '');
+    tarjeta.onclick = () => { pisoActivo = piso.id; dibujar(); };
+    tarjeta.innerHTML = '<b>' + piso.nombre + '</b><br><span style="font-size:26px;color:' +
+      (l > 0 ? 'var(--libre)' : 'var(--ocupado)') + '">' + l + '</span> <span class="suave">libres de ' + totalCajones(piso.id) + '</span>';
+    contenedor.appendChild(tarjeta);
+  });
+
+  document.getElementById('recomendacion').textContent = mejor
+    ? 'Te recomendamos: ' + mejor.nombre + ' (' + maxLibres + ' lugares libres)'
+    : 'Estacionamiento lleno';
+  document.getElementById('totales').textContent =
+    libres + ' libres · ' + ocupados + ' ocupados · ' + mantto + ' en mantenimiento · ' + estado.cajones.length + ' cajones en total';
+}
+
+function dibujarPestanas() {
+  const contenedor = document.getElementById('pestanas');
+  contenedor.innerHTML = '';
+  PISOS.forEach(piso => {
+    const b = document.createElement('button');
+    b.className = 'pestana' + (piso.id === pisoActivo ? ' activo' : '');
+    b.textContent = piso.nombre + ' (' + contar(piso.id, 'libre') + ')';
+    b.onclick = () => { pisoActivo = piso.id; dibujar(); };
+    contenedor.appendChild(b);
+  });
+}
+
+// Dibuja el piso activo, sección por sección, igual que el letrero
+function dibujarMapa() {
+  const mapa = document.getElementById('mapa');
+  mapa.innerHTML = '';
+  const piso = PISOS.find(p => p.id === pisoActivo);
+
+  piso.secciones.forEach(seccion => {
+    const titulo = document.createElement('p');
+    titulo.innerHTML = '<b>Sección ' + seccion.nombre + '</b> <span class="suave">· cajones ' +
+      seccion.desde + ' al ' + seccion.hasta + '</span>';
+    mapa.appendChild(titulo);
+
+    const rejilla = document.createElement('div');
+    rejilla.className = 'cajones';
+    estado.cajones.filter(c => c.piso === pisoActivo && c.seccion === seccion.nombre).forEach(cajon => {
+      const div = document.createElement('div');
+      div.className = 'cajon ' + cajon.estado;
+      if (esGuardia) div.className += ' clic';
+      if (cajon.estado === 'libre' && cajon.id === cajonEntrada) div.className += ' elegido';
+      if (cajon.estado === 'ocupado' && cajon.id === cajonCobro) div.className += ' elegido';
+
+      let texto = '<b>' + cajon.id + '</b><br>';
+      if (cajon.estado === 'libre') texto += 'Libre';
+      else if (cajon.estado === 'mantto') texto += 'Mantto.';
+      else if (esGuardia) texto += cajon.vehiculo.placa;   // solo el guardia ve la placa
+      else texto += 'Ocupado';
+      div.innerHTML = texto;
+
+      if (esGuardia) div.onclick = () => clicEnCajon(cajon);
+      rejilla.appendChild(div);
+    });
+    mapa.appendChild(rejilla);
+  });
+}
+
+function dibujarIndicadores() {
+  const total = estado.cajones.length;
+  const ocupados = estado.cajones.filter(c => c.estado === 'ocupado').length;
+  document.getElementById('indicadores').innerHTML =
+    '<div class="fila">' +
+    '<span>Ocupados: <b>' + ocupados + ' de ' + total + '</b> (' + Math.round(ocupados / total * 100) + '%)</span>' +
+    '<span>Autos atendidos: <b>' + estado.atendidos + '</b></span>' +
+    '<span>Ingresos: <b>' + dinero(estado.ingresos) + '</b></span></div>';
+}
+
+/* ---------- 6. ENTRADAS ---------- */
+
+// Cuando el guardia hace clic en un cajón del mapa
+function clicEnCajon(cajon) {
+  if (cajon.estado === 'libre') {
+    cajonEntrada = cajon.id;
+    dibujar();
+    document.getElementById('placa').focus();
+  } else if (cajon.estado === 'ocupado') {
+    cajonCobro = cajon.id;
+    document.getElementById('horas-extra').value = 0;   // reinicia la barra de simulación
+    dibujar();
+  } else if (cajon.estado === 'mantto') {
+    cajonMantto = cajon.id;
+    dibujar();
+  }
+}
+
+// Llena una lista desplegable. Mantiene lo elegido si todavía existe.
+function llenarSelect(idSelect, opciones, elegido) {
+  const select = document.getElementById(idSelect);
+  select.innerHTML = '';
+  opciones.forEach(o => {
+    const op = document.createElement('option');
+    op.value = o[0];
+    op.textContent = o[1];
+    select.appendChild(op);
+  });
+  if (opciones.some(o => o[0] === elegido)) select.value = elegido;
+  return select.value;
+}
+
+function llenarListas() {
+  // Cajones libres del piso que se está viendo
+  const libres = estado.cajones.filter(c => c.piso === pisoActivo && c.estado === 'libre');
+  cajonEntrada = llenarSelect('lista-entrada', libres.map(c => [c.id, 'Cajón ' + c.id + ' (' + c.seccion + ')']), cajonEntrada);
+
+  // Todos los autos estacionados
+  const ocupados = estado.cajones.filter(c => c.estado === 'ocupado');
+  const opcionesCobro = [['', '-- Selecciona --']].concat(ocupados.map(c => [c.id, c.vehiculo.placa + ' · cajón ' + c.id]));
+  cajonCobro = llenarSelect('lista-cobro', opcionesCobro, cajonCobro) || null;
+
+  // Cajones libres o en mantenimiento del piso que se está viendo
+  const posibles = estado.cajones.filter(c => c.piso === pisoActivo && (c.estado === 'libre' || c.estado === 'mantto'));
+  cajonMantto = llenarSelect('lista-mantto',
+    posibles.map(c => [c.id, 'Cajón ' + c.id + (c.estado === 'mantto' ? ' [en mantenimiento]' : ' (libre)')]), cajonMantto);
+}
+
+function registrarEntrada(e) {
+  e.preventDefault();
+  const placa = document.getElementById('placa').value.trim().toUpperCase();
+  const cajon = estado.cajones.find(c => c.id === cajonEntrada);
+
+  if (placa.length < 3) return aviso('La placa debe tener al menos 3 caracteres.', 'error');
+  if (!cajon || cajon.estado !== 'libre') return aviso('Elige un cajón libre.', 'error');
+
+  // Una placa no puede estar dos veces dentro
+  const repetida = estado.cajones.find(c => c.estado === 'ocupado' && c.vehiculo.placa === placa);
+  if (repetida) return aviso('La placa ' + placa + ' ya está en el cajón ' + repetida.id + '.', 'error');
+
+  const ahora = Date.now();
+  cajon.estado = 'ocupado';
+  cajon.vehiculo = { placa: placa, entrada: ahora };
+  estado.atendidos += 1;
+  agregarABitacora('ENTRADA', placa, cajon.id, ahora, ahora, 'En estancia', 0, 0, 'Automóvil');
+
+  document.getElementById('placa').value = '';
+  guardar();
+  dibujar();
+  aviso('Entrada registrada: ' + placa + ' en el cajón ' + cajon.id + '.');
+}
+
+/* ---------- 7. COBRO Y SALIDA ---------- */
+
+function buscarPlaca(texto) {
+  const buscada = texto.trim().toUpperCase();
+  if (!buscada) return;
+  const cajon = estado.cajones.find(c => c.estado === 'ocupado' && c.vehiculo.placa.includes(buscada));
+  if (cajon) {
+    cajonCobro = cajon.id;
+    pisoActivo = cajon.piso;
+    document.getElementById('horas-extra').value = 0;   // reinicia la barra de simulación
+    dibujar();
+  }
+}
+
+// Calcula el cobro según el tipo de tarifa elegido por el guardia:
+// - Universitaria: $10 las primeras 3 horas, y $5 por cada hora extra o fracción.
+// - Público general: $12 por hora o fracción.
+// También suma las horas extra de la barra de simulación (si las hay).
+function calcularCobro(vehiculo) {
+  const horasExtra = Number(document.getElementById('horas-extra').value) || 0;
+  const minutos = Math.floor((Date.now() - vehiculo.entrada) / 60000) + (horasExtra * 60);
+  const horasCobradas = Math.max(1, Math.ceil(minutos / 60));   // mínimo 1 hora; fracción sube a hora completa
+  const tipo = document.getElementById('tipo-tarifa').value;
+
+  let monto = 0;
+  let nombreTarifa = '';
+
+  if (tipo === 'universitario') {
+    nombreTarifa = 'Tarifa universitaria';
+    if (horasCobradas <= 3) {
+      monto = UNIV_BASE;
+    } else {
+      monto = UNIV_BASE + (horasCobradas - 3) * UNIV_EXTRA;
+    }
+  } else {
+    nombreTarifa = 'Público general';
+    monto = horasCobradas * GENERAL_HORA;
+  }
+
+  return {
+    horasExtra: horasExtra,
+    horas: Math.floor(minutos / 60),
+    minutos: minutos % 60,
+    horasCobradas: horasCobradas,
+    monto: monto,
+    nombreTarifa: nombreTarifa
+  };
+}
+
+function mostrarCobro() {
+  const cajon = estado.cajones.find(c => c.id === cajonCobro);
+  const valido = !!cajon && cajon.estado === 'ocupado';
+  document.getElementById('detalle-cobro').hidden = !valido;
+  document.getElementById('sin-cobro').hidden = valido;
+  if (!valido) return;
+
+  const cobro = calcularCobro(cajon.vehiculo);
+  document.getElementById('txt-horas-extra').textContent = cobro.horasExtra;
+
+  document.getElementById('co-titulo').textContent = 'Cajón ' + cajon.id + ' · ' + cajon.vehiculo.placa;
+  document.getElementById('co-entrada').textContent = formatoHora(cajon.vehiculo.entrada);
+  document.getElementById('co-tiempo').textContent = cobro.horas + 'h ' + cobro.minutos + 'm';
+  document.getElementById('co-total').textContent = dinero(cobro.monto);
+  document.getElementById('co-horas').textContent = '(' + cobro.horasCobradas + ' hr cobradas · ' + cobro.nombreTarifa + ')';
+}
+
+function cobrar() {
+  const cajon = estado.cajones.find(c => c.id === cajonCobro);
+  if (!cajon || cajon.estado !== 'ocupado') return;
+
+  const cobro = calcularCobro(cajon.vehiculo);
+  const v = cajon.vehiculo;
+  const folio = agregarABitacora('SALIDA', v.placa, cajon.id, v.entrada, Date.now(),
+    cobro.horas + 'h ' + cobro.minutos + 'm', cobro.horasCobradas, cobro.monto, cobro.nombreTarifa);
+
+  estado.ingresos += cobro.monto;
+  cajon.estado = 'libre';      // el cajón queda libre otra vez
+  cajon.vehiculo = null;
+  cajonCobro = null;
+  document.getElementById('buscar').value = '';
+  document.getElementById('horas-extra').value = 0;
+
+  guardar();
+  dibujar();
+  abrirTicket(folio);
+}
+
+/* ---------- 8. MANTENIMIENTO ---------- */
+
+// Cambia el texto del botón según el cajón elegido
+function dibujarMantto() {
+  const cajon = estado.cajones.find(c => c.id === cajonMantto);
+  const boton = document.getElementById('btn-mantto');
+  if (!cajon) { boton.textContent = 'No hay cajones disponibles'; return; }
+  boton.textContent = cajon.estado === 'mantto' ? 'Habilitar cajón ' + cajon.id : 'Bloquear cajón ' + cajon.id;
+  if (cajon.estado === 'mantto') document.getElementById('motivo').value = cajon.motivo;
+}
+
+function cambiarMantto() {
+  const cajon = estado.cajones.find(c => c.id === cajonMantto);
+  if (!cajon || (cajon.estado !== 'libre' && cajon.estado !== 'mantto')) return aviso('Elige un cajón libre o en mantenimiento.', 'error');
+
+  const ahora = Date.now();
+  if (cajon.estado === 'mantto') {
+    cajon.estado = 'libre';
+    cajon.motivo = '';
+    agregarABitacora('MANTENIMIENTO', 'HABILITADO', cajon.id, ahora, ahora, '-', 0, 0, 'Cajón reabierto');
+  } else {
+    const motivo = document.getElementById('motivo').value.trim() || 'Mantenimiento';
+    cajon.estado = 'mantto';
+    cajon.motivo = motivo;
+    agregarABitacora('MANTENIMIENTO', 'BLOQUEO', cajon.id, ahora, ahora, '-', 0, 0, motivo);
+  }
+  document.getElementById('motivo').value = '';
+  guardar();
+  dibujar();
+}
+
+/* ---------- 9. BITÁCORA ---------- */
+
+// Agrega un movimiento al historial (al principio de la lista) y devuelve su folio
+function agregarABitacora(accion, placa, cajon, entrada, hora, duracion, horasCobradas, monto, detalle) {
+  const folio = 'F-' + (estado.folio++);
+  estado.bitacora.unshift({ folio: folio, accion: accion, placa: placa, cajon: cajon,
+    entrada: entrada, hora: hora, duracion: duracion, horasCobradas: horasCobradas, monto: monto, detalle: detalle });
+  return folio;
+}
+
+function dibujarBitacora() {
+  const filtro = document.getElementById('filtro').value;
+  const filas = estado.bitacora.filter(r => filtro === 'TODOS' || r.accion === filtro);
+  const tbody = document.getElementById('bitacora');
+
+  if (filas.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8">No hay registros.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filas.map(r =>
+    '<tr><td>' + r.folio + '</td><td>' + r.accion + '</td><td>' + r.placa + '</td><td>' + r.cajon + '</td>' +
+    '<td>' + formatoHora(r.hora) + '</td><td>' + (r.accion === 'SALIDA' ? r.duracion + ' · ' + r.detalle : r.detalle) + '</td>' +
+    '<td>' + (r.accion === 'SALIDA' ? dinero(r.monto) : '-') + '</td>' +
+    '<td>' + (r.accion === 'SALIDA' ? '<a href="#" onclick="abrirTicket(\'' + r.folio + '\'); return false;">Ticket</a>' : '') + '</td></tr>'
+  ).join('');
+}
+
+/* ---------- 10. TICKET Y REINICIO ---------- */
+
+function abrirTicket(folio) {
+  const r = estado.bitacora.find(x => x.folio === folio);
+  if (!r) return;
+  document.getElementById('ticket').innerHTML =
+    '<div><b>UASLP · ESTACIONAMIENTO</b></div>' +
+    '<div><span>Zona Universitaria</span></div>' +
+    '<div><span>Folio</span><span>' + r.folio + '</span></div>' +
+    '<div><span>Placa</span><span>' + r.placa + '</span></div>' +
+    '<div><span>Cajón</span><span>' + r.cajon + '</span></div>' +
+    '<div><span>Tarifa</span><span>' + r.detalle + '</span></div>' +
+    '<div><span>Entrada</span><span>' + formatoHora(r.entrada) + '</span></div>' +
+    '<div><span>Salida</span><span>' + formatoHora(r.hora) + '</span></div>' +
+    '<div><span>Estancia</span><span>' + r.duracion + '</span></div>' +
+    '<div><b>TOTAL</b><b>' + dinero(r.monto) + '</b></div>';
+  abrir('ventana-ticket');
+}
+
+function copiarTicket() {
+  navigator.clipboard.writeText(document.getElementById('ticket').innerText)
+    .then(() => aviso('Ticket copiado.'))
+    .catch(() => aviso('No se pudo copiar.', 'error'));
+}
+
+function reiniciar() {
+  estado = crearEstadoInicial();
+  cajonEntrada = cajonCobro = cajonMantto = null;
+  document.getElementById('horas-extra').value = 0;
+  guardar();
+  dibujar();
+  cerrar('ventana-reinicio');
+  aviso('Datos reiniciados.');
+}
+
+/* ---------- 11. HERRAMIENTAS PEQUEÑAS ---------- */
+
+function abrir(id)  { document.getElementById(id).showModal(); }
+function cerrar(id) { document.getElementById(id).close(); }
+
+function dinero(n) { return '$' + n.toFixed(2); }
+
+function formatoHora(ms) {
+  return new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Mensaje que aparece 3 segundos arriba a la derecha
+function aviso(texto, tipo) {
+  const caja = document.getElementById('aviso');
+  caja.textContent = texto;
+  caja.style.background = tipo === 'error' ? 'var(--ocupado)' : 'var(--boton)';
+  caja.hidden = false;
+  clearTimeout(aviso.temporizador);
+  aviso.temporizador = setTimeout(() => caja.hidden = true, 3000);
+}
+
+function actualizarReloj() {
+  document.getElementById('reloj').textContent = new Date().toLocaleString('es-MX');
+}
+
+/* ---------- 12. ARRANQUE ---------- */
+// Esto se ejecuta una sola vez, cuando la página termina de cargar.
+
+cargar();
+esGuardia = leer('sessionStorage', LLAVE_SESION) === 'si';
+aplicarRol();
+actualizarReloj();
+dibujar();
+setInterval(actualizarReloj, 1000);
+setInterval(() => { if (esGuardia) mostrarCobro(); }, 30000);  // actualiza el cobro cada 30 s
+
+</script>
+</body>
+</html>
